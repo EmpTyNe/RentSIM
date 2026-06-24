@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>СИМ · Центр управления парком (Краснодар)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121822; --panel-2:#0e141d; --line:#202b38;
+    --text:#e6edf3; --muted:#7d8b9c;
+    --green:#00e0a4; --blue:#3da9fc; --amber:#f5a623; --red:#ff5470; --violet:#b06bff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:'Archivo',system-ui,sans-serif;background:var(--bg);color:var(--text);
+    display:grid;grid-template-rows:auto 1fr;height:100vh;overflow:hidden}
+  .mono{font-family:'JetBrains Mono',monospace}
+  button{font-family:inherit}
+
+  header{display:flex;align-items:center;gap:24px;padding:14px 22px;
+    background:linear-gradient(180deg,#10161f,#0b0f14);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:12px;white-space:nowrap}
+  .brand .dot{width:11px;height:11px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 4px rgba(0,224,164,.15);animation:pulse 2s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 8px rgba(0,224,164,0)}}
+  .brand b{font-size:16px;letter-spacing:.3px}
+  .brand span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:2px}
+  .stats{display:flex;gap:10px;margin-left:auto}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:72px;text-align:center}
+  .stat .n{font-size:20px;font-weight:700;line-height:1}
+  .stat .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:4px}
+  .token{display:flex;align-items:center;gap:8px}
+  .token input{background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:8px;
+    padding:7px 10px;font-family:'JetBrains Mono',monospace;font-size:12px;width:130px}
+  .token button{background:var(--green);color:#04221b;border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer}
+
+  main{display:grid;grid-template-columns:320px 1fr;min-height:0}
+  aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:14px}
+  .tools{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+  .tools .add{background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:9px;
+    padding:10px 12px;font-weight:600;font-size:13px;cursor:pointer;transition:.12s;text-align:left}
+  .tools .add:hover{border-color:#3a4a5f;background:#161d28}
+  .tools .add.active{border-color:var(--amber);color:var(--amber)}
+  .tools .hint{font-size:11px;color:var(--muted);line-height:1.4}
+  .section-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin:6px 4px 12px}
+  .dev{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--line);border-radius:11px;
+    margin-bottom:8px;cursor:pointer;transition:.15s;background:var(--panel-2)}
+  .dev:hover{border-color:#33445a;transform:translateX(2px)}
+  .dev .sdot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+  .dev .code{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:13px}
+  .dev .meta{color:var(--muted);font-size:11px;margin-top:2px}
+  .dev .batt{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700}
+
+  #map{height:100%;width:100%;background:#0b0f14}
+  #map.adding{cursor:crosshair}
+  .maparea{position:relative}
+
+  .tools .add.fleet-repair{color:#bfa0ef;border-color:#352b4d}
+  .tools .add.fleet-repair:hover{border-color:var(--violet);background:#161126}
+  .tools .add.fleet-stop{color:#f0a6b6;border-color:#4d2933}
+  .tools .add.fleet-stop:hover{border-color:var(--red);background:#241016}
+  .tools .add.fleet-stop.paused{color:#9fe6cf;border-color:#1f4a3c}
+  .tools .add.fleet-stop.paused:hover{border-color:var(--green);background:#0e2019}
+  .legend{background:rgba(14,20,29,.92);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;backdrop-filter:blur(8px)}
+  .legend h4{margin:0 0 9px;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+  .legend .row{display:flex;align-items:center;gap:9px;font-size:12px;margin:5px 0}
+  .legend .sw{width:14px;height:14px;border-radius:4px}
+  .logpanel{position:absolute;z-index:500;left:16px;bottom:16px;width:340px;max-height:38%;
+    display:flex;flex-direction:column;background:rgba(14,20,29,.92);border:1px solid var(--line);
+    border-radius:12px;backdrop-filter:blur(8px);overflow:hidden}
+  .logpanel .log-h{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;
+    padding:10px 14px;border-bottom:1px solid var(--line)}
+  #log{overflow-y:auto;padding:6px 0}
+  .logitem{display:flex;gap:9px;align-items:baseline;padding:5px 14px;font-size:12px;border-left:3px solid var(--muted)}
+  .logitem.ok{border-left-color:var(--green)}
+  .logitem.warn{border-left-color:var(--amber)}
+  .logitem.error{border-left-color:var(--red)}
+  .logitem .lt{color:var(--muted);font-size:11px;flex:0 0 auto}
+  .logitem .lm{color:var(--text)}
+
+  .leaflet-popup-content-wrapper{background:#121822;color:var(--text);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .leaflet-popup-tip{background:#121822}
+  .pop h3{margin:0 0 8px;font-family:'JetBrains Mono',monospace;font-size:15px}
+  .pop .grid{display:grid;grid-template-columns:auto auto;gap:3px 14px;font-size:12px;margin-bottom:10px}
+  .pop .grid b{color:var(--muted);font-weight:400}
+  .pop .acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .pop .acts button{border:1px solid var(--line);background:#0e141d;color:var(--text);border-radius:8px;padding:7px;cursor:pointer;font-size:12px;transition:.12s}
+  .pop .acts button:hover{border-color:#46586f}
+  .pop .acts button.danger:hover{border-color:var(--red);color:var(--red)}
+
+  /* всплывающие уведомления (правый верх) */
+  #alerts{position:absolute;z-index:700;right:18px;top:90px;display:flex;flex-direction:column;gap:10px;width:320px}
+  .alert{background:#1a1116;border:1px solid var(--red);border-left:4px solid var(--red);border-radius:11px;
+    padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.5);animation:slidein .3s ease}
+  .alert .t{font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px}
+  .alert .m{font-size:12px;color:#f3c9d3;margin-top:4px;line-height:1.4}
+  .alert.warn{border-color:var(--amber);border-left-color:var(--amber);background:#191510}
+  .alert.warn .m{color:#f3e6c9}
+  .cfg{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  .cfg-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:10px}
+  .cfg label{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px;gap:8px}
+  .cfg input{width:72px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right}
+  .cfg .apply{width:100%;background:var(--violet);color:#1a0b2e;border:0;border-radius:8px;padding:9px;font-weight:700;cursor:pointer;margin-top:4px}
+  .alert .x{position:absolute;cursor:pointer}
+  @keyframes slidein{from{opacity:0;transform:translateX(20px)}}
+
+  /* модалки */
+  .modal-bg{position:fixed;inset:0;background:rgba(5,8,12,.7);z-index:1000;display:none;align-items:center;justify-content:center}
+  .modal-bg.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;width:340px}
+  .modal h3{margin:0 0 16px;font-size:16px}
+  .modal label{display:block;font-size:12px;color:var(--muted);margin:0 0 12px}
+  .modal input,.modal select{width:100%;margin-top:5px;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--text);border-radius:8px;padding:9px 10px;font-family:inherit;font-size:13px}
+  .modal-acts{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+  .modal-acts button{border:1px solid var(--line);background:var(--panel-2);color:var(--text);border-radius:8px;padding:9px 16px;cursor:pointer}
+  .modal-acts button.primary{background:var(--green);color:#04221b;border:0;font-weight:700}
+  .hdr-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
+  .ver{color:var(--muted);font-size:11px;font-family:'JetBrains Mono',monospace;margin-right:4px;opacity:.8}
+  .hbtn{background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:9px;
+    padding:8px 13px;font-size:13px;cursor:pointer;transition:.12s}
+  .hbtn:hover{border-color:#3a4a5f;background:#161d28}
+  .hbtn.ghost{color:var(--muted)}
+  .hbtn.ghost:hover{color:var(--text)}
+
+  .login-bg{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 30%,#16202c,#0b0f14)}
+  .login-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:30px;width:330px;
+    box-shadow:0 24px 70px rgba(0,0,0,.5)}
+  .login-logo{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:700;letter-spacing:.5px}
+  .login-logo .dot{width:11px;height:11px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(0,224,164,.15)}
+  .login-sub{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:2px;margin:6px 0 22px}
+  .login-card input{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    border-radius:9px;padding:11px 12px;margin-bottom:12px;font-family:inherit;font-size:14px}
+  .login-card button{width:100%;background:var(--green);color:#04221b;border:0;border-radius:9px;padding:12px;
+    font-weight:700;font-size:14px;cursor:pointer;margin-top:4px}
+  .login-err{color:var(--red);font-size:12px;min-height:16px;margin-bottom:6px}
+
+  .stats-panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;
+    width:min(900px,94vw);max-height:90vh;overflow-y:auto}
+  .stats-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .stats-head h3{margin:0;font-size:18px}
+  .xbtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:8px;
+    width:32px;height:32px;cursor:pointer;font-size:14px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+  .kpi{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+  .kpi .n{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700}
+  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:5px}
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+  .chart-box{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px;height:240px}
+  .trips-head{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:10px}
+  .trips-table table{width:100%;border-collapse:collapse;font-size:13px}
+  .trips-table th{text-align:left;color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;
+    letter-spacing:1px;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .trips-table td{padding:9px 10px;border-bottom:1px solid var(--panel-2)}
+  .trips-table .empty{color:var(--muted);font-size:13px;padding:14px}
+  /* Тёмные полосы прокрутки */
+  *{scrollbar-width:thin;scrollbar-color:#2a3645 var(--panel-2)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:var(--panel-2)}
+  ::-webkit-scrollbar-thumb{background:#2a3645;border-radius:7px;border:2px solid var(--panel-2)}
+  ::-webkit-scrollbar-thumb:hover{background:#3a4a5f}
+
+  /* Тёмные контролы Leaflet (зум) */
+  .leaflet-bar{border:1px solid var(--line)!important;box-shadow:0 4px 14px rgba(0,0,0,.4)!important}
+  .leaflet-bar a{background-color:var(--panel);color:var(--text);border-bottom:1px solid var(--line)}
+  .leaflet-bar a:hover{background-color:#1a2330;color:var(--text)}
+
+  /* Иконки рисования зон: красим только background-color (картинку-иконку не трогаем)
+     и инвертируем — тёмные значки становятся светлыми на тёмном фоне */
+  .leaflet-draw-toolbar a{background-color:#ede7dd;filter:invert(1)}
+  .leaflet-draw-toolbar a:hover{background-color:#d6cec3}
+  /* Подтверждающая панель (Сохранить/Отмена/Удалить) — обычная тёмная, без инверсии */
+  .leaflet-draw-actions a{background-color:var(--panel)!important;color:var(--text)!important;border-left:1px solid var(--line)}
+  .leaflet-draw-actions a:hover{background-color:#1a2330!important}
+  .leaflet-draw-tooltip{background:var(--panel);border:1px solid var(--line);color:var(--text)}
+  .leaflet-draw-tooltip:before{border-right-color:var(--panel)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><div class="dot"></div>
+    <div><b>FLEET&nbsp;OPS</b><br><span>Краснодар · управление СИМ</span></div></div>
+  <div class="stats">
+    <div class="stat"><div class="n mono" id="s-total">0</div><div class="l">Всего</div></div>
+    <div class="stat"><div class="n mono" id="s-avail" style="color:var(--green)">0</div><div class="l">Свободно</div></div>
+    <div class="stat"><div class="n mono" id="s-use" style="color:var(--blue)">0</div><div class="l">В аренде</div></div>
+    <div class="stat"><div class="n mono" id="s-fault" style="color:var(--red)">0</div><div class="l">Поломка</div></div>
+  </div>
+  <div class="hdr-actions">
+    <span class="ver">build 2</span>
+    <button class="hbtn" onclick="openStats()">Аналитика</button>
+    <button class="hbtn" onclick="openSim()">Симуляция</button>
+    <button class="hbtn ghost" onclick="logout()">Выйти</button>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <div class="tools">
+      <button class="add" id="addDevBtn" onclick="toggleAddMode()">+ Добавить самокат</button>
+      <button class="add fleet-repair" onclick="repairAll()">Починить все</button>
+      <button class="add fleet-stop" id="simToggleBtn" onclick="toggleSim()">Остановить симуляцию</button>
+      <div class="hint">Чтобы добавить самокат — нажми кнопку и кликни на карте.<br>
+        Зоны рисуй и правь инструментами в правом нижнем углу карты.</div>
+    </div>
+    <div class="section-title">Устройства парка</div>
+    <div id="list"></div>
+  </aside>
+  <div class="maparea">
+    <div id="map"></div>
+    <div id="alerts"></div>
+    <div class="logpanel">
+      <div class="log-h">Журнал событий</div>
+      <div id="log"></div>
+    </div>
+  </div>
+</main>
+
+<!-- экран входа оператора -->
+<div class="login-bg" id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo"><span class="dot"></span> FLEET&nbsp;OPS</div>
+    <div class="login-sub">Вход оператора · Краснодар</div>
+    <input id="lgUser" placeholder="Логин" value="admin" autocomplete="username">
+    <input id="lgPass" type="password" placeholder="Пароль" value="admin" autocomplete="current-password">
+    <div class="login-err" id="lgErr"></div>
+    <button onclick="doLogin()">Войти</button>
+  </div>
+</div>
+
+<!-- аналитика -->
+<div class="modal-bg" id="statsModal">
+  <div class="stats-panel">
+    <div class="stats-head"><h3>Аналитика парка</h3><button class="xbtn" onclick="closeStats()">✕</button></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="charts">
+      <div class="chart-box"><canvas id="chDay"></canvas></div>
+      <div class="chart-box"><canvas id="chOut"></canvas></div>
+    </div>
+    <div class="trips-head">Последние поездки</div>
+    <div class="trips-table" id="tripsTable"></div>
+  </div>
+</div>
+
+<!-- параметры симуляции -->
+<div class="modal-bg" id="simModal">
+  <div class="modal">
+    <h3>Параметры симуляции</h3>
+    <label>Шанс поломки, %<input id="cfgBreak" type="number" min="0" max="100" value="20"></label>
+    <label>Кулдаун ремонта, с<input id="cfgRepair" type="number" min="1" value="20"></label>
+    <label>Кулдаун зарядки, с<input id="cfgCharge" type="number" min="1" value="20"></label>
+    <div class="modal-acts"><button onclick="closeSim()">Закрыть</button><button class="primary" onclick="applyCfg()">Применить</button></div>
+  </div>
+</div>
+
+<!-- модалка зоны -->
+<div class="modal-bg" id="zoneModal">
+  <div class="modal">
+    <h3>Параметры зоны</h3>
+    <label>Название<input id="zName" value="Новая зона"></label>
+    <label>Тип
+      <select id="zType">
+        <option value="parking">Парковка (разрешена)</option>
+        <option value="slow">Медленная зона</option>
+        <option value="forbidden">Запрещённая зона</option>
+      </select></label>
+    <label id="zSpeedWrap">Лимит скорости, км/ч<input id="zSpeed" type="number" value="10"></label>
+    <div class="modal-acts"><button id="zCancel">Отмена</button><button class="primary" id="zSave">Сохранить</button></div>
+  </div>
+</div>
+
+<!-- модалка добавления самоката -->
+<div class="modal-bg" id="devModal">
+  <div class="modal">
+    <h3>Новый самокат</h3>
+    <label>Код (например, SC-010)<input id="dCode" value=""></label>
+    <label>Тип
+      <select id="dType"><option value="scooter">Самокат</option><option value="ebike">Электровелосипед</option></select></label>
+    <div class="modal-acts"><button id="dCancel">Отмена</button><button class="primary" id="dSave">Добавить</button></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const STATUS_COLORS={available:'#00e0a4',in_use:'#3da9fc',charging:'#f5a623',maintenance:'#b06bff',fault:'#ff5470'};
+const STATUS_LABEL={available:'Свободен',in_use:'В аренде',charging:'Зарядка',maintenance:'Ремонт',fault:'Поломка'};
+const ZONE_STYLE={
+  forbidden:{color:'#ff5470',fillColor:'#ff5470',fillOpacity:.22,weight:1.5},
+  slow:{color:'#f5a623',fillColor:'#f5a623',fillOpacity:.18,weight:1.5},
+  parking:{color:'#00e0a4',fillColor:'#00e0a4',fillOpacity:.16,weight:1.5},
+};
+
+let token=sessionStorage.getItem('adminToken')||'';
+let addMode=false;
+
+const map=L.map('map',{zoomControl:false,attributionControl:false}).setView([45.0355,38.9753],14);   // Краснодар
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  {subdomains:'abcd',maxZoom:20}).addTo(map);
+
+const drawnItems=new L.FeatureGroup().addTo(map);   // редактируемые полигоны зон
+const markers={}, devices={};
+
+const drawControl=new L.Control.Draw({
+  position:'bottomright',
+  draw:{polygon:{allowIntersection:false,shapeOptions:{color:'#3da9fc'}},
+        polyline:false,rectangle:false,circle:false,marker:false,circlemarker:false},
+  edit:{featureGroup:drawnItems,remove:true},
+});
+map.addControl(drawControl);
+
+// Легенда — как контрол в правом нижнем углу, ниже кнопок масштаба/зон
+const legend=L.control({position:'bottomright'});
+legend.onAdd=function(){
+  const div=L.DomUtil.create('div','legend');
+  div.innerHTML=`
+    <h4>Геозоны</h4>
+    <div class="row"><span class="sw" style="background:rgba(255,84,112,.5);border:1px solid var(--red)"></span>Запрещённая</div>
+    <div class="row"><span class="sw" style="background:rgba(245,166,35,.4);border:1px solid var(--amber)"></span>Медленная</div>
+    <div class="row"><span class="sw" style="background:rgba(0,224,164,.35);border:1px solid var(--green)"></span>Парковка</div>
+    <h4 style="margin-top:12px">Статус СИМ</h4>
+    <div class="row"><span class="sw" style="border-radius:50%;background:var(--green)"></span>Свободен</div>
+    <div class="row"><span class="sw" style="border-radius:50%;background:var(--blue)"></span>В аренде</div>
+    <div class="row"><span class="sw" style="border-radius:50%;background:var(--violet)"></span>Ремонт</div>
+    <div class="row"><span class="sw" style="border-radius:50%;background:var(--red)"></span>Поломка</div>`;
+  L.DomEvent.disableClickPropagation(div);
+  return div;
+};
+legend.addTo(map);
+
+function battColor(b){return b<20?'var(--red)':b<50?'var(--amber)':'var(--green)';}
+
+// ── HTTP-хелпер с токеном ──
+async function api(path,opts){
+  opts=opts||{};
+  opts.headers=Object.assign({'X-Admin-Token':token,'Content-Type':'application/json'},opts.headers||{});
+  const r=await fetch(path,opts);
+  if(r.status===401){ document.getElementById('loginScreen').style.display='flex'; throw new Error('Требуется вход'); }
+  if(!r.ok) throw new Error((await r.text())||('HTTP '+r.status));
+  const t=await r.text(); return t?JSON.parse(t):null;
+}
+
+// ── Уведомления ──
+// ── Тихие звуки уведомлений (WebAudio, без файлов) ──
+let audioCtx=null;
+function ensureAudio(){
+  if(!audioCtx){ try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  if(audioCtx&&audioCtx.state==='suspended') audioCtx.resume();
+}
+function tone(freq,start,dur){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type='sine'; o.frequency.value=freq; g.gain.value=0.00001;
+  o.connect(g); g.connect(audioCtx.destination);
+  g.gain.exponentialRampToValueAtTime(0.05, start+0.02);  // тихо
+  g.gain.exponentialRampToValueAtTime(0.00001, start+dur);
+  o.start(start); o.stop(start+dur+0.02);
+}
+function playBeep(level){
+  ensureAudio(); if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  if(level==='error'){ tone(660,t,0.16); tone(520,t+0.18,0.18); }  // двойной — тревога
+  else { tone(440,t,0.16); }                                       // одиночный — предупреждение
+}
+
+function notify(level,message){
+  playBeep(level);
+  const box=document.getElementById('alerts');
+  const el=document.createElement('div'); el.className='alert '+(level==='warn'?'warn':'error');
+  const title=level==='warn'?'🔋 Внимание':'⚠ Тревога';
+  el.innerHTML=`<div class="t">${title}</div><div class="m">${message}</div>`;
+  box.appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transform='translateX(20px)';setTimeout(()=>el.remove(),300);},9000);
+}
+
+// ── Устройства ──
+function popupHTML(d){
+  return `<div class="pop"><h3>${d.code}</h3>
+    <div class="grid">
+      <b>Статус</b><span>${STATUS_LABEL[d.status]||d.status}</span>
+      <b>Заряд</b><span class="mono">${d.battery}%</span>
+      <b>Лимит</b><span class="mono">${d.speed_limit} км/ч</span>
+      <b>Тип</b><span>${d.device_type||'scooter'}</span></div>
+    <div class="acts">
+      <button onclick="control('${d.code}','maintenance')">На ремонт</button>
+      <button onclick="control('${d.code}','charging')">На зарядку</button>
+      <button onclick="control('${d.code}','release')">В строй</button>
+      <button class="danger" onclick="control('${d.code}','fault')">Сломать</button>
+      <button onclick="setBattery('${d.code}')">Заряд…</button>
+      <button class="danger" onclick="removeDevice('${d.code}')">Удалить</button>
+    </div></div>`;
+}
+function upsertMarker(d){
+  if(d.lat==null||d.lng==null) return;
+  devices[d.code]=Object.assign({},devices[d.code],d);
+  const cur=devices[d.code];
+  const color=STATUS_COLORS[cur.status]||'#7d8b9c';
+  if(markers[d.code]){
+    markers[d.code].setLatLng([cur.lat,cur.lng]).setStyle({color,fillColor:color});
+    markers[d.code].setPopupContent(popupHTML(cur));
+  }else{
+    markers[d.code]=L.circleMarker([cur.lat,cur.lng],{radius:8,color,fillColor:color,fillOpacity:.9,weight:3})
+      .addTo(map).bindPopup(popupHTML(cur));
+  }
+}
+function renderList(){
+  const list=document.getElementById('list'); list.innerHTML='';
+  let total=0,avail=0,use=0,fault=0;
+  Object.values(devices).sort((a,b)=>a.code.localeCompare(b.code)).forEach(d=>{
+    total++; if(d.status==='available')avail++; if(d.status==='in_use')use++; if(d.status==='fault')fault++;
+    const el=document.createElement('div'); el.className='dev';
+    el.innerHTML=`<span class="sdot" style="background:${STATUS_COLORS[d.status]||'#7d8b9c'}"></span>
+      <div><div class="code">${d.code}</div>
+      <div class="meta">${STATUS_LABEL[d.status]||d.status} · ${d.speed_limit} км/ч</div></div>
+      <span class="batt" style="color:${battColor(d.battery)}">${d.battery}%</span>`;
+    el.onclick=()=>{if(markers[d.code]){map.setView(markers[d.code].getLatLng(),17);markers[d.code].openPopup();}};
+    list.appendChild(el);
+  });
+  document.getElementById('s-total').textContent=total;
+  document.getElementById('s-avail').textContent=avail;
+  document.getElementById('s-use').textContent=use;
+  document.getElementById('s-fault').textContent=fault;
+}
+async function control(code,action,value){
+  try{
+    const data=await api(`/admin/devices/${code}/control`,{method:'POST',body:JSON.stringify({action,value})});
+    if(devices[code]){ if(data.status)devices[code].status=data.status; if(data.battery!=null)devices[code].battery=data.battery;
+      upsertMarker(devices[code]); renderList(); }
+  }catch(e){ notify('error','Ошибка: '+e.message); }
+}
+function setBattery(code){
+  const v=prompt('Уровень заряда, % (0–100):','15');
+  if(v!==null) control(code,'set_battery',parseInt(v,10));
+}
+async function removeDevice(code){
+  if(!confirm(`Удалить самокат ${code}?`)) return;
+  try{ await api(`/admin/devices/${code}`,{method:'DELETE'});
+    if(markers[code]){map.removeLayer(markers[code]);delete markers[code];}
+    delete devices[code]; renderList();
+  }catch(e){ notify('error','Ошибка: '+e.message); }
+}
+
+// ── Добавление самоката кликом по карте ──
+function toggleAddMode(){
+  addMode=!addMode;
+  document.getElementById('addDevBtn').classList.toggle('active',addMode);
+  document.getElementById('map').classList.toggle('adding',addMode);
+}
+map.on('click',async e=>{
+  if(!addMode) return;
+  toggleAddMode();
+  const vals=await openDevModal();
+  if(!vals) return;
+  try{
+    await api('/admin/devices',{method:'POST',body:JSON.stringify({code:vals.code,device_type:vals.type,lat:e.latlng.lat,lng:e.latlng.lng})});
+    upsertMarker({code:vals.code,device_type:vals.type,status:'available',battery:100,speed_limit:25,lat:e.latlng.lat,lng:e.latlng.lng});
+    renderList();
+  }catch(err){ notify('error','Ошибка: '+err.message); }
+});
+
+// ── Зоны ──
+function styleFor(t){return ZONE_STYLE[t]||{color:'#888'};}
+async function loadZones(){
+  const fc=await (await fetch('/zones')).json();
+  drawnItems.clearLayers();
+  fc.features.forEach(f=>{
+    const ring=f.geometry.coordinates[0].map(c=>[c[1],c[0]]);  // [lng,lat]→[lat,lng]
+    const layer=L.polygon(ring,styleFor(f.properties.zone_type));
+    layer.zoneId=f.properties.id; layer.zoneProps=f.properties;
+    const sl=f.properties.speed_limit?` · ${f.properties.speed_limit} км/ч`:'';
+    layer.bindTooltip(f.properties.name+sl,{sticky:true});
+    drawnItems.addLayer(layer);
+  });
+}
+// нарисовали новую зону
+map.on(L.Draw.Event.CREATED, async e=>{
+  const vals=await openZoneModal();
+  if(!vals){ return; }   // отмена — полигон не сохраняем
+  try{
+    const geometry=e.layer.toGeoJSON().geometry;
+    const res=await api('/admin/zones',{method:'POST',
+      body:JSON.stringify({name:vals.name,zone_type:vals.zone_type,speed_limit:vals.speed_limit,geometry})});
+    e.layer.setStyle(styleFor(vals.zone_type));
+    e.layer.zoneId=res.id;
+    const sl=vals.speed_limit?` · ${vals.speed_limit} км/ч`:'';
+    e.layer.bindTooltip(vals.name+sl,{sticky:true});
+    drawnItems.addLayer(e.layer);
+  }catch(err){ notify('error','Ошибка: '+err.message); }
+});
+// отредактировали геометрию
+map.on(L.Draw.Event.EDITED, async e=>{
+  e.layers.eachLayer(async layer=>{
+    if(!layer.zoneId) return;
+    try{ await api(`/admin/zones/${layer.zoneId}`,{method:'PUT',body:JSON.stringify({geometry:layer.toGeoJSON().geometry})}); }
+    catch(err){ notify('error','Ошибка: '+err.message); }
+  });
+});
+// удалили зону
+map.on(L.Draw.Event.DELETED, async e=>{
+  e.layers.eachLayer(async layer=>{
+    if(!layer.zoneId) return;
+    try{ await api(`/admin/zones/${layer.zoneId}`,{method:'DELETE'}); }
+    catch(err){ notify('error','Ошибка: '+err.message); }
+  });
+});
+
+// ── Модалки (promise-based) ──
+function openZoneModal(){
+  return new Promise(resolve=>{
+    const bg=document.getElementById('zoneModal');
+    const type=document.getElementById('zType'), speedWrap=document.getElementById('zSpeedWrap');
+    const sync=()=>{ speedWrap.style.display=type.value==='slow'?'block':'none'; };
+    type.onchange=sync; sync(); bg.classList.add('show');
+    document.getElementById('zSave').onclick=()=>{
+      bg.classList.remove('show');
+      resolve({name:document.getElementById('zName').value||'Зона',zone_type:type.value,
+        speed_limit:type.value==='slow'?parseInt(document.getElementById('zSpeed').value,10):null});
+    };
+    document.getElementById('zCancel').onclick=()=>{ bg.classList.remove('show'); resolve(null); };
+  });
+}
+function openDevModal(){
+  return new Promise(resolve=>{
+    const bg=document.getElementById('devModal');
+    document.getElementById('dCode').value='SC-'+String(Math.floor(Math.random()*900)+100);
+    bg.classList.add('show');
+    document.getElementById('dSave').onclick=()=>{ bg.classList.remove('show');
+      resolve({code:document.getElementById('dCode').value.trim(),type:document.getElementById('dType').value}); };
+    document.getElementById('dCancel').onclick=()=>{ bg.classList.remove('show'); resolve(null); };
+  });
+}
+
+// ── Загрузка и WebSocket ──
+async function loadDevices(){
+  try{
+    const arr=await api('/admin/devices',{});
+    arr.forEach(upsertMarker); renderList();
+  }catch(e){ notify('error','Не удалось загрузить устройства: '+e.message); }
+}
+function connectWS(){
+  const proto=location.protocol==='https:'?'wss':'ws';
+  const ws=new WebSocket(`${proto}://${location.host}/ws/devices`);
+  ws.onmessage=ev=>{
+    const m=JSON.parse(ev.data);
+    if(m.type==='alert'){ notify(m.level||'error',m.message); return; }
+    if(m.type==='event'){ addLog(m); return; }
+    if(m.type==='status'){
+      if(devices[m.code]){
+        devices[m.code].status=m.status;
+        if(m.battery!=null) devices[m.code].battery=m.battery;
+        if(m.lat!=null){ devices[m.code].lat=m.lat; devices[m.code].lng=m.lng; }
+        upsertMarker(devices[m.code]); renderList();
+      }
+      return;
+    }
+    // телеметрия: позиция и заряд (статус не трогаем)
+    upsertMarker({code:m.code,lat:m.lat,lng:m.lng,battery:m.battery,speed_limit:m.speed_limit});
+    renderList();
+  };
+  ws.onclose=()=>setTimeout(connectWS,2000);
+}
+async function loadCfg(){
+  try{
+    const c=await api('/admin/sim/config',{});
+    document.getElementById('cfgBreak').value=Math.round(c.breakdown_chance*100);
+    document.getElementById('cfgRepair').value=c.repair_cooldown;
+    document.getElementById('cfgCharge').value=c.charge_cooldown;
+    setSimBtn(!!c.paused);
+  }catch(e){}
+}
+function setSimBtn(paused){
+  const b=document.getElementById('simToggleBtn');
+  if(!b) return;
+  b.textContent = paused ? 'Продолжить симуляцию' : 'Остановить симуляцию';
+  b.classList.toggle('paused', paused);
+}
+async function toggleSim(){
+  try{ const r=await api('/admin/sim/toggle',{method:'POST'});
+    setSimBtn(r.paused);
+    notify('warn', r.paused?'Симуляция остановлена':'Симуляция возобновлена'); }
+  catch(e){ notify('error','Ошибка: '+e.message); }
+}
+function addLog(ev){
+  const log=document.getElementById('log');
+  const el=document.createElement('div'); el.className='logitem '+(ev.level||'info');
+  el.innerHTML=`<span class="lt mono">${ev.ts||''}</span><span class="lm">${ev.message}</span>`;
+  log.prepend(el);
+  while(log.children.length>60) log.removeChild(log.lastChild);
+}
+async function loadEvents(){
+  try{ const arr=await api('/admin/events',{}); document.getElementById('log').innerHTML=''; arr.forEach(addLog); }catch(e){}
+}
+async function applyCfg(){
+  try{
+    await api('/admin/sim/config',{method:'PUT',body:JSON.stringify({
+      breakdown_chance:parseFloat(document.getElementById('cfgBreak').value)/100,
+      repair_cooldown:parseInt(document.getElementById('cfgRepair').value,10),
+      charge_cooldown:parseInt(document.getElementById('cfgCharge').value,10),
+    })});
+    notify('warn','Параметры симуляции обновлены'); closeSim();
+  }catch(e){ notify('error','Ошибка: '+e.message); }
+}
+function openSim(){ loadCfg(); document.getElementById('simModal').classList.add('show'); }
+function closeSim(){ document.getElementById('simModal').classList.remove('show'); }
+
+// ── Ультимативные действия по парку ──
+async function repairAll(){
+  try{ const r=await api('/admin/devices/repair-all',{method:'POST'});
+    notify('warn',`Починено самокатов: ${r.repaired}`); loadDevices(); }
+  catch(e){ notify('error','Ошибка: '+e.message); }
+}
+async function stopAll(){
+  if(!confirm('Остановить весь парк и завершить все активные поездки?')) return;
+  try{ const r=await api('/admin/devices/stop-all',{method:'POST'});
+    notify('warn',`Остановлено поездок: ${r.stopped}`); loadDevices(); }
+  catch(e){ notify('error','Ошибка: '+e.message); }
+}
+// ── Вход / выход ──
+async function doLogin(){
+  ensureAudio();
+  const u=document.getElementById('lgUser').value.trim();
+  const p=document.getElementById('lgPass').value;
+  try{
+    const r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u,password:p})});
+    if(!r.ok){ document.getElementById('lgErr').textContent =
+        r.status===401 ? 'Неверный логин или пароль' : ('Ошибка сервера ('+r.status+')'); return; }
+    const data=await r.json();
+    token=data.token; sessionStorage.setItem('adminToken',token);
+    document.getElementById('loginScreen').style.display='none';
+    initDashboard();
+  }catch(e){ document.getElementById('lgErr').textContent='Ошибка соединения с сервером'; }
+}
+function logout(){ sessionStorage.removeItem('adminToken'); location.reload(); }
+
+// ── Аналитика ──
+let chDay=null, chOut=null;
+function fmtDur(s){ s=Math.round(s); const m=Math.floor(s/60); return m+'м '+(s%60)+'с'; }
+async function openStats(){
+  document.getElementById('statsModal').classList.add('show');
+  try{
+    const s=await api('/admin/stats',{});
+    document.getElementById('kpis').innerHTML=`
+      <div class="kpi"><div class="n">${s.trips_total}</div><div class="l">Поездок</div></div>
+      <div class="kpi"><div class="n">${(s.distance_total_m/1000).toFixed(1)}</div><div class="l">Пробег, км</div></div>
+      <div class="kpi"><div class="n">${Math.round(s.revenue_total)} ₽</div><div class="l">Выручка</div></div>
+      <div class="kpi"><div class="n">${fmtDur(s.avg_duration_s)}</div><div class="l">Ср. поездка</div></div>`;
+    const days=s.per_day.map(d=>d.date.slice(5)), counts=s.per_day.map(d=>d.count);
+    if(chDay)chDay.destroy();
+    chDay=new Chart(document.getElementById('chDay'),{type:'bar',
+      data:{labels:days,datasets:[{label:'Поездки',data:counts,backgroundColor:'#3da9fc',borderRadius:4}]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},title:{display:true,text:'Поездки по дням',color:'#7d8b9c'}},
+        scales:{x:{ticks:{color:'#7d8b9c'},grid:{color:'#1c2632'}},y:{ticks:{color:'#7d8b9c'},grid:{color:'#1c2632'},beginAtZero:true}}}});
+    const rl={completed:'Завершено',breakdown:'Поломка',violation:'Нарушение',depleted:'Разряжен'};
+    const keys=['completed','breakdown','violation','depleted'];
+    if(chOut)chOut.destroy();
+    chOut=new Chart(document.getElementById('chOut'),{type:'doughnut',
+      data:{labels:keys.map(k=>rl[k]),datasets:[{data:keys.map(k=>s.outcomes[k]||0),
+        backgroundColor:['#00e0a4','#ff5470','#f5a623','#7d8b9c'],borderColor:'#0e141d',borderWidth:2}]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{labels:{color:'#e6edf3'}},title:{display:true,text:'Исходы поездок',color:'#7d8b9c'}}}});
+    const t=await api('/admin/trips?limit=15',{});
+    const ro={completed:'Завершено',breakdown:'Поломка',violation:'Нарушение',depleted:'Разряжен'};
+    let html='<table><thead><tr><th>Самокат</th><th>Длит.</th><th>Дистанция</th><th>Стоимость</th><th>Исход</th></tr></thead><tbody>';
+    t.forEach(r=>{ html+=`<tr><td class="mono">${r.code}</td><td>${fmtDur(r.duration_s)}</td>
+      <td>${(r.distance_m/1000).toFixed(2)} км</td><td>${Math.round(r.cost)} ₽</td><td>${ro[r.outcome]||r.outcome}</td></tr>`; });
+    html+='</tbody></table>';
+    document.getElementById('tripsTable').innerHTML=t.length?html:'<div class="empty">Поездок пока нет — подождите, пока самокаты покатаются.</div>';
+  }catch(e){ notify('error','Аналитика: '+e.message); }
+}
+function closeStats(){ document.getElementById('statsModal').classList.remove('show'); }
+
+// ── Инициализация (после входа) ──
+let _inited=false;
+function initDashboard(){
+  if(_inited) return; _inited=true;
+  loadZones(); loadDevices(); loadCfg(); loadEvents(); connectWS();
+}
+if(sessionStorage.getItem('adminToken')){
+  token=sessionStorage.getItem('adminToken');
+  document.getElementById('loginScreen').style.display='none';
+  initDashboard();
+}
+</script>
+</body>
+</html>

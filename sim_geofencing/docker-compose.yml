@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mobility
+      POSTGRES_USER: mobility
+      POSTGRES_PASSWORD: mobility
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mobility"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 150s
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "1883:1883"
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mqtt:
+        condition: service_started
+    environment:
+      DB_HOST: db
+      MQTT_HOST: mqtt
+    ports:
+      - "8000:8000"
+
+  emulator:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mqtt
+      - api
+    environment:
+      MQTT_HOST: mqtt
+      API_URL: http://api:8000
+    command: ["python", "-m", "emulator.emulator"]
+
+volumes:
+  pgdata:
